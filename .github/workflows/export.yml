@@ -22,10 +22,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth google-auth-httplib2 requests
 
-     - name: Write credentials
-          run: echo '${{ secrets.CREDENTIALS_JSON }}' > credentials.json
- 
-
       - name: Run exporter
         env:
           API_KEY: ${{ secrets.API_KEY }}
