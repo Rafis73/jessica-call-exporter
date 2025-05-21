@@ -2,9 +2,7 @@
 
 import os
 import time
-import datetime
 import requests
-import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -65,8 +63,11 @@ def format_call(detail, fallback_ts):
     lines = []
     prev_role = None
     for msg in transcript:
-        role = msg.get("role", "").upper()
-        text = msg.get("message", "").strip()
+        role = (msg.get("role") or "").upper()
+        raw_text = msg.get("message")
+        if raw_text is None:
+            continue
+        text = raw_text.strip()
         if not text:
             continue
         tsec = msg.get("time_in_call_secs", 0.0)
