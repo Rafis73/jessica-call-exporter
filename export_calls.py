@@ -10,9 +10,8 @@ from googleapiclient.discovery import build
 
 API_KEY = os.environ.get("API_KEY")
 DOC_ID = os.environ.get("DOC_ID")
-AGENT_NAME_FILTER = "Jessica-10 minit"
+AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
 PAGE_SIZE = 100
-MIN_DURATION = 60
 TZ_OFFSET_HOURS = 4
 LAST_RUN_FILE = "last_run.txt"
 SCOPES = ["https://www.googleapis.com/auth/documents"]
@@ -37,7 +36,7 @@ def fetch_all_calls():
         r.raise_for_status()
         data = r.json()
         for call in data.get("conversations", []):
-            if call.get("agent_name") == AGENT_NAME_FILTER:
+            if call.get("agent_id") == AGENT_ID_FILTER:
                 all_calls.append(call)
         if not data.get("has_more"):
             break
@@ -87,9 +86,12 @@ def format_call(detail, fallback_ts):
 def main():
     docs_service = get_docs_service()
     calls = fetch_all_calls()
-    relevant_calls = [c for c in calls if c.get("call_duration_secs", 0) > MIN_DURATION]
+    print(f"Всего звонков от агента ID={AGENT_ID_FILTER}: {len(calls)}")
+
     last_ts = load_last_run()
-    new_calls = [c for c in relevant_calls if c.get("start_time_unix_secs", 0) > last_ts]
+    new_calls = [c for c in calls if c.get("start_time_unix_secs", 0) > last_ts]
+    print(f"Новых звонков: {len(new_calls)}")
+
     if not new_calls:
         print("Нет новых звонков.")
         return
