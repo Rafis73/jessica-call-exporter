@@ -4,25 +4,24 @@ import os
 import time
 import requests
 import pickle
+from datetime import datetime
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-# ----------------- НАСТРОЙКИ -----------------
+# ---------------- НАСТРОЙКИ ---------------- #
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
 DOC_ID = "1iFo9n49wVAhYfdHQVBzypcm-SzuyY0DCqqpt6Ko4fM4"
 PAGE_SIZE = 100
 LAST_RUN_FILE = os.path.join(BASE_DIR, "last_run.txt")
 CREDENTIALS = os.path.join(BASE_DIR, "credentials.json")
-SCOPES = [
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive.file",
-]
+SCOPES = ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive.file"]
 TZ_OFFSET_HOURS = 4
 AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
+CHUNK_SIZE = 100000
 
-# ----------------- Google OAuth -----------------
+# ---------------- AUTH ---------------- #
 def get_credentials():
     creds = None
     token_path = os.path.join(BASE_DIR, "token.pickle")
@@ -42,13 +41,10 @@ def get_credentials():
 creds = get_credentials()
 docs_service = build("docs", "v1", credentials=creds)
 
-# ----------------- ConvAI API -----------------
 session = requests.Session()
-session.headers.update({
-    "xi-api-key": API_KEY,
-    "Accept": "application/json"
-})
+session.headers.update({"xi-api-key": API_KEY, "Accept": "application/json"})
 
+# ---------------- ЗВОНКИ ---------------- #
 def fetch_all_calls():
     url = "https://api.elevenlabs.io/v1/convai/conversations"
     params = {"page_size": PAGE_SIZE}
@@ -59,36 +55,47 @@ def fetch_all_calls():
         data = r.json()
         calls = data.get("conversations", [])
         for call in calls:
-            if call.get("agent_id", "") == AGENT_ID_FILTER:
+            if call.get("agent_id") == AGENT_ID_FILTER:
                 all_calls.append(call)
-        if not data.get("has_more", False):
+        if not data.get("has_more"):
             break
         params["cursor"] = data.get("next_cursor")
     return all_calls
 
-def fetch_call_detail(conversation_id):
-    r = session.get(f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}")
+def fetch_call_detail(cid):
+    r = session.get(f"https://api.elevenlabs.io/v1/convai/conversations/{cid}")
     r.raise_for_status()
     return r.json()
 
-# ----------------- Вспомогательные функции -----------------
+# ---------------- УТИЛИТЫ ---------------- #
 def load_last_run():
-    return int(open(LAST_RUN_FILE).read().strip()) if os.path.exists(LAST_RUN_FILE) else 0
+    if os.path.exists(LAST_RUN_FILE):
+        try:
+            with open(LAST_RUN_FILE, "r") as f:
+                return int(f.read().strip())
+        except:
+            print("⚠️ Ошибка чтения last_run.txt")
+    return 0
 
-def save_last_run(timestamp):
-    with open(LAST_RUN_FILE, "w") as f:
-        f.write(str(int(timestamp)))
+def save_last_run(ts):
+    try:
+        with open(LAST_RUN_FILE, "w") as f:
+            f.write(str(int(ts)))
+        print(f"💾 last_run.txt обновлён: {ts}")
+    except Exception as e:
+        print(f"❌ Ошибка записи last_run.txt: {e}")
 
-# ----------------- Форматирование звонка -----------------
 def format_call(detail, fallback_ts):
-    st = detail.get("metadata", {}).get("start_time_unix_secs", fallback_ts)
-    adjusted_ts = st + (TZ_OFFSET_HOURS * 3600)
-    ts_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(adjusted_ts))
+    ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback_ts
+    adjusted = ts + (TZ_OFFSET_HOURS * 3600)
+    dt_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(adjusted))
 
-    analysis = detail.get("analysis") or {}
-    summary = (analysis.get("transcript_summary") or "").strip()
-
+    summary = (detail.get("analysis") or {}).get("transcript_summary", "").strip()
     transcript = detail.get("transcript", [])
+
+    header = f"=== Call at {dt_str} ===\n"
+    if summary:
+        header += f"Summary:\n{summary}\n"
     lines = []
     prev_role = None
     for msg in transcript:
@@ -96,8 +103,8 @@ def format_call(detail, fallback_ts):
         text = (msg.get("message") or "").strip()
         if not text:
             continue
-        tsec = msg.get("time_in_call_secs", 0.0)
-        line = f"[{tsec:06.2f}s] {role}: {text}"
+        t = msg.get("time_in_call_secs", 0.0)
+        line = f"[{t:06.2f}s] {role}: {text}"
         if prev_role and prev_role != role:
             lines.append("")
         if prev_role == role:
@@ -105,81 +112,73 @@ def format_call(detail, fallback_ts):
         else:
             lines.append(line)
         prev_role = role
-
-    header = f"=== Call at {ts_str} ===\n"
-    if summary:
-        header += f"Summary:\n{summary}\n"
     return header + "\n" + "\n".join(lines) + "\n\n" + "―" * 40 + "\n\n"
 
-# ----------------- Основной процесс -----------------
+# ---------------- ОСНОВА ---------------- #
 def main():
+    print("🚀 Начинаем экспорт звонков")
     calls = fetch_all_calls()
-    print(f"Всего звонков от агента ID {AGENT_ID_FILTER}: {len(calls)}")
+    print(f"📦 Всего звонков от агента {AGENT_ID_FILTER}: {len(calls)}")
 
     last_ts = load_last_run()
-    new_calls = [c for c in calls if c.get("start_time_unix_secs", 0) > last_ts]
-    print(f"Новых звонков: {len(new_calls)}")
+    print(f"⏱ Последний экспорт: {last_ts} ({datetime.utcfromtimestamp(last_ts)})")
+
+    new_calls = []
+    for call in calls:
+        ts = call.get("start_time_unix_secs", 0)
+        print(f"→ Звонок: {ts} | {call.get('conversation_id')}")
+        if ts > last_ts:
+            new_calls.append(call)
+
     if not new_calls:
-        print("Нет новых звонков для добавления.")
+        print("🔕 Нет новых звонков для выгрузки")
         return
 
-    new_calls.sort(key=lambda x: x["start_time_unix_secs"], reverse=True)
+    new_calls.sort(key=lambda c: c.get("start_time_unix_secs", 0))
     full_text = ""
     max_ts = last_ts
+
     for call in new_calls:
         cid = call["conversation_id"]
-        fallback = call.get("start_time_unix_secs", 0)
-        detail = fetch_call_detail(cid)
-        time.sleep(1.0)  # пауза между запросами к ElevenLabs
-        block = format_call(detail, fallback)
-        full_text += block
-        call_ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback
-        if call_ts > max_ts:
-            max_ts = call_ts
+        fallback_ts = call.get("start_time_unix_secs", 0)
+        try:
+            detail = fetch_call_detail(cid)
+            block = format_call(detail, fallback_ts)
+            full_text += block
+            ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback_ts
+            if ts > max_ts:
+                max_ts = ts
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"❌ Ошибка при получении звонка {cid}: {e}")
+            continue
 
     if not full_text.strip():
-        print("Пустой текст, ничего не добавляем.")
+        print("⚠️ Пустой текст — ничего не вставляем")
         return
 
     try:
-        print(f"Всего символов в тексте: {len(full_text)}")
+        chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
+        print(f"✂️ Разбили на {len(chunks)} чанков по {CHUNK_SIZE} символов")
+
         insert_index = 1
-
-        chunk_size = 4000
-        chunks = [full_text[i:i + chunk_size] for i in range(0, len(full_text), chunk_size)]
-
-        for idx, chunk in enumerate(chunks):
-            request = {
+        for i, chunk in enumerate(chunks):
+            docs_service.documents().batchUpdate(documentId=DOC_ID, body={
                 "requests": [{
                     "insertText": {
                         "location": {"index": insert_index},
                         "text": chunk
                     }
                 }]
-            }
-
-            try:
-                docs_service.documents().batchUpdate(
-                    documentId=DOC_ID,
-                    body=request
-                ).execute()
-            except Exception as e:
-                if "Quota group for write operations" in str(e) or "RATE_LIMIT_EXCEEDED" in str(e):
-                    print(f"🛑 Достигнут лимит Google Docs API. Прерываем вставку на чанке {idx + 1}/{len(chunks)}.")
-                    print("❗️last_run НЕ обновлён. Следующий запуск повторит попытку.")
-                    return
-                else:
-                    raise e
-
+            }).execute()
             insert_index += len(chunk)
-            print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
-            time.sleep(1.1)  # пауза между вставками в Google Docs
+            print(f"✅ Вставлен чанк {i + 1}/{len(chunks)}")
 
-        print(f"🎯 Все чанки вставлены. Сохраняем max_ts: {max_ts}")
+        print(f"🏁 Все звонки добавлены. Обновляем last_run: {max_ts}")
         save_last_run(max_ts)
 
     except Exception as e:
-        print(f"❌ Ошибка при вставке: {e}")
+        print(f"❌ Ошибка при вставке в Google Doc: {e}")
 
 if __name__ == "__main__":
     main()
