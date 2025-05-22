@@ -135,8 +135,15 @@ def main():
         return
 
     try:
+        # Получаем последний валидный индекс вставки
         doc = docs_service.documents().get(documentId=DOC_ID).execute()
-        end_index = doc.get("body", {}).get("content", [])[-1].get("endIndex", 1)
+        content = doc.get("body", {}).get("content", [])
+        end_index = 1
+        for el in reversed(content):
+            if "endIndex" in el:
+                end_index = el["endIndex"]
+                break
+        print(f"Вставка будет выполнена в позицию: {end_index}")
 
         requests_body = [{
             "insertText": {
@@ -144,11 +151,13 @@ def main():
                 "text": full_text
             }
         }]
+
         docs_service.documents().batchUpdate(documentId=DOC_ID, body={"requests": requests_body}).execute()
-        print(f"Добавлено {len(new_calls)} звонков в Google Doc (ID={DOC_ID}).")
+        print(f"✅ Добавлено {len(new_calls)} звонков в Google Doc (ID={DOC_ID}).")
         save_last_run(max_ts)
+
     except Exception as e:
-        print(f"Ошибка при добавлении в документ: {e}")
+        print(f"❌ Ошибка при добавлении в документ: {e}")
 
 if __name__ == "__main__":
     main()
