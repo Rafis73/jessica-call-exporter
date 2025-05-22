@@ -171,6 +171,9 @@ def main():
             insert_index += len(chunk)
             print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
 
+            # ⏱ пауза для обхода лимита Google API
+            time.sleep(1.1)
+
         print(f"🎯 Все чанки вставлены. Сохраняем max_ts: {max_ts}")
         save_last_run(max_ts)
 
