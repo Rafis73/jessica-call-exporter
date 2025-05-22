@@ -12,7 +12,6 @@ API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
 TOKEN_PATH = "token.pickle"
 LAST_RUN_FILE = "last_run.txt"
 
-# === ACCESS TOKEN ===
 def get_access_token():
     with open(TOKEN_PATH, "rb") as f:
         creds = pickle.load(f)
@@ -20,7 +19,6 @@ def get_access_token():
         creds.refresh(Request())
     return creds.token
 
-# === ВРЕМЯ ПОСЛЕДНЕГО ЗАПУСКА ===
 def load_last_ts():
     return int(open(LAST_RUN_FILE).read().strip()) if os.path.exists(LAST_RUN_FILE) else 0
 
@@ -28,7 +26,6 @@ def save_last_ts(ts):
     with open(LAST_RUN_FILE, "w") as f:
         f.write(str(ts))
 
-# === ЗАПРОСЫ К ELEVENLABS ===
 def fetch_all_calls():
     all_calls = []
     cursor = None
@@ -54,7 +51,6 @@ def fetch_call_detail(cid):
     r.raise_for_status()
     return r.json()
 
-# === ФОРМАТИРОВКА ===
 def format_call(detail, fallback_ts):
     st = detail.get("metadata", {}).get("start_time_unix_secs", fallback_ts)
     ts_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st))
@@ -80,13 +76,11 @@ def format_call(detail, fallback_ts):
         prev = role
     return "\n".join(lines) + "\n\n" + "―" * 40 + "\n\n"
 
-# === ГЛАВНАЯ ЛОГИКА ===
 def main():
     access_token = get_access_token()
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "If-Match": "*"
+        "Content-Type": "application/json"
     }
 
     print("Загружаем звонки...")
@@ -114,18 +108,18 @@ def main():
         full_text += block
         max_ts = max(max_ts, fallback)
 
-    # Формируем тело запроса Google Docs API
-    requests_body = [{
-        "insertText": {
-            "location": {"index": 1},
-            "text": full_text
-        }
-    }]
-
+    # ⬇⬇⬇ удалён If-Match здесь ⬇⬇⬇
     r = requests.post(
         f"https://docs.googleapis.com/v1/documents/{DOC_ID}:batchUpdate",
         headers=headers,
-        data=json.dumps({"requests": requests_body})
+        data=json.dumps({
+            "requests": [{
+                "insertText": {
+                    "location": {"index": 1},
+                    "text": full_text
+                }
+            }]
+        })
     )
     r.raise_for_status()
     save_last_ts(max_ts)
