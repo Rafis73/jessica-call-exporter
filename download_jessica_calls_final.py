@@ -9,11 +9,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 # ----------------- НАСТРОЙКИ -----------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
 DOC_ID = "1iFo9n49wVAhYfdHQVBzypcm-SzuyY0DCqqpt6Ko4fM4"
 PAGE_SIZE = 100
-LAST_RUN_FILE = "last_run.txt"
-CREDENTIALS = "credentials.json"
+LAST_RUN_FILE = os.path.join(BASE_DIR, "last_run.txt")
+CREDENTIALS = os.path.join(BASE_DIR, "credentials.json")
 SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/drive.file",
@@ -24,8 +25,9 @@ AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
 # ----------------- Google OAuth -----------------
 def get_credentials():
     creds = None
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as f:
+    token_path = os.path.join(BASE_DIR, "token.pickle")
+    if os.path.exists(token_path):
+        with open(token_path, "rb") as f:
             creds = pickle.load(f)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -33,7 +35,7 @@ def get_credentials():
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
             creds = flow.run_local_server(port=0, access_type="offline", include_granted_scopes=True)
-        with open("token.pickle", "wb") as f:
+        with open(token_path, "wb") as f:
             pickle.dump(creds, f)
     return creds
 
@@ -170,8 +172,6 @@ def main():
 
             insert_index += len(chunk)
             print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
-
-            # ⏱ пауза для обхода лимита Google API
             time.sleep(1.1)
 
         print(f"🎯 Все чанки вставлены. Сохраняем max_ts: {max_ts}")
