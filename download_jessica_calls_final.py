@@ -130,7 +130,7 @@ def main():
         detail = fetch_call_detail(cid)
         block = format_call(detail, fallback)
         full_text += block
-        call_ts = detail.get("metadata", {}).get("start_time_unix_secs", fallback)
+        call_ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback
         if call_ts > max_ts:
             max_ts = call_ts
 
@@ -140,27 +140,28 @@ def main():
 
     try:
         print(f"Всего символов в тексте: {len(full_text)}")
-        insert_index = 1  # всегда вставляем в начало документа
+        insert_index = 1  # безопасная вставка в начало
 
-        chunk_size = 2000
-        chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
+        chunk_size = 4000  # можно регулировать
+        chunks = [full_text[i:i + chunk_size] for i in range(0, len(full_text), chunk_size)]
 
-        requests_body = []
-        for chunk in chunks:
-            requests_body.append({
-                "insertText": {
-                    "location": {"index": insert_index},
-                    "text": chunk
-                }
-            })
+        for idx, chunk in enumerate(chunks):
+            request = {
+                "requests": [{
+                    "insertText": {
+                        "location": {"index": insert_index},
+                        "text": chunk
+                    }
+                }]
+            }
+            docs_service.documents().batchUpdate(
+                documentId=DOC_ID,
+                body=request
+            ).execute()
             insert_index += len(chunk)
+            print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
 
-        docs_service.documents().batchUpdate(
-            documentId=DOC_ID,
-            body={"requests": requests_body}
-        ).execute()
-
-        print(f"✅ Успешно добавлено {len(new_calls)} звонков ({len(full_text)} символов).")
+        print(f"🎯 Все чанки вставлены. Сохраняем max_ts: {max_ts}")
         save_last_run(max_ts)
 
     except Exception as e:
