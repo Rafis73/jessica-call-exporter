@@ -140,9 +140,9 @@ def main():
 
     try:
         print(f"Всего символов в тексте: {len(full_text)}")
-        insert_index = 1  # безопасная вставка в начало
+        insert_index = 1
 
-        chunk_size = 4000  # можно регулировать
+        chunk_size = 4000
         chunks = [full_text[i:i + chunk_size] for i in range(0, len(full_text), chunk_size)]
 
         for idx, chunk in enumerate(chunks):
@@ -154,10 +154,20 @@ def main():
                     }
                 }]
             }
-            docs_service.documents().batchUpdate(
-                documentId=DOC_ID,
-                body=request
-            ).execute()
+
+            try:
+                docs_service.documents().batchUpdate(
+                    documentId=DOC_ID,
+                    body=request
+                ).execute()
+            except Exception as e:
+                if "Quota group for write operations" in str(e) or "RATE_LIMIT_EXCEEDED" in str(e):
+                    print(f"🛑 Достигнут лимит Google Docs API. Прерываем вставку на чанке {idx + 1}/{len(chunks)}.")
+                    print("❗️last_run НЕ обновлён. Следующий запуск повторит попытку.")
+                    return
+                else:
+                    raise e
+
             insert_index += len(chunk)
             print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
 
