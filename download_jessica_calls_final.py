@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 
 # --- НАСТРОЙКИ --- #
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-API_KEY = "sk_..."  # ← подставь свой ключ
+API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"  # ← подставь свой ключ
 DOC_ID = "1iFo9n49wVAhYfdHQVBzypcm-SzuyY0DCqqpt6Ko4fM4"
 PAGE_SIZE = 100
 CHUNK_SIZE = 100000
