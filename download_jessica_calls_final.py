@@ -139,23 +139,13 @@ def main():
         return
 
     try:
-        doc = docs_service.documents().get(documentId=DOC_ID).execute()
-        content = doc.get("body", {}).get("content", [])
-        end_index = 1
-        for el in reversed(content):
-            if "endIndex" in el:
-                end_index = el["endIndex"]
-                break
-
         print(f"Всего символов в тексте: {len(full_text)}")
-        print(f"Вставка будет начинаться с позиции: {end_index}")
+        insert_index = 1  # всегда вставляем в начало документа
 
-        # Разбиваем текст на чанки
         chunk_size = 2000
         chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
 
         requests_body = []
-        insert_index = end_index - 1
         for chunk in chunks:
             requests_body.append({
                 "insertText": {
