@@ -3,25 +3,33 @@ name: Export Calls to Google Doc
 on:
   schedule:
     - cron: '*/5 * * * *'  # каждые 5 минут
-  workflow_dispatch:
+  workflow_dispatch:       # запуск вручную по кнопке
 
 jobs:
   export:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: 🔁 Checkout репозитория
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: ⚙️ Установка Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: 📦 Установка зависимостей
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run exporter
+      - name: 🚀 Запуск экспорта звонков
+        run: python download_jessica_calls_final.py
+
+      - name: 💾 Commit и push last_run.txt
         run: |
-          python download_jessica_calls_final.py
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add last_run.txt
+          git commit -m "update last_run after export" || echo "нет изменений"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref }}
