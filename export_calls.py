@@ -1,9 +1,12 @@
+
 #!/usr/bin/env python3
 
 import os
 import time
 import requests
-from google.oauth2 import service_account
+import pickle
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 API_KEY = os.environ.get("API_KEY")
@@ -12,13 +15,23 @@ AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
 PAGE_SIZE = 100
 TZ_OFFSET_HOURS = 4
 LAST_RUN_FILE = "last_run.txt"
+CREDENTIALS = "credentials.json"
 SCOPES = ["https://www.googleapis.com/auth/documents"]
 
 def get_docs_service():
-    credentials = service_account.Credentials.from_service_account_file(
-        "credentials.json", scopes=SCOPES
-    )
-    return build("docs", "v1", credentials=credentials)
+    creds = None
+    if os.path.exists("token.pickle"):
+        with open("token.pickle", "rb") as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token.pickle", "wb") as token:
+            pickle.dump(creds, token)
+    return build("docs", "v1", credentials=creds)
 
 def fetch_all_calls():
     session = requests.Session()
