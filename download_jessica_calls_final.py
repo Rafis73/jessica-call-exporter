@@ -140,20 +140,19 @@ def main():
         return
 
     try:
-        doc = docs_service.documents().get(documentId=DOC_ID).execute()
-        end_index = doc["body"]["content"][-1]["endIndex"] - 1
         chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
-        for i, chunk in enumerate(chunks):
+
+        # Вставляем в начало → переворачиваем порядок чанков
+        for i, chunk in enumerate(reversed(chunks)):
             docs_service.documents().batchUpdate(documentId=DOC_ID, body={
                 "requests": [{
                     "insertText": {
-                        "location": {"index": end_index},
+                        "location": {"index": 1},
                         "text": chunk
                     }
                 }]
             }).execute()
-            end_index += len(chunk)
-            print(f"✅ Вставлен чанк {i + 1}/{len(chunks)}")
+            print(f"✅ Вставлен чанк {i + 1}/{len(chunks)} в начало")
 
         save_last_run(max_ts)
     except Exception as e:
