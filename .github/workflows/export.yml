@@ -2,7 +2,7 @@ name: Export Calls to Google Doc
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5 * * * *'  # каждые 5 минут
   workflow_dispatch:
 
 jobs:
@@ -23,8 +23,5 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run exporter
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-          DOC_ID: ${{ secrets.DOC_ID }}
         run: |
-          python export_calls.py
+          python download_jessica_calls_final.py
