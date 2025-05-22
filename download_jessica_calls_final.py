@@ -120,7 +120,9 @@ def main():
         print("✅ Новых звонков нет")
         return
 
-    new_calls.sort(key=lambda c: c["start_time_unix_secs"])
+    # ⬇️ ВАЖНО: сортируем по убыванию — чтобы свежие были первыми
+    new_calls.sort(key=lambda c: c["start_time_unix_secs"], reverse=True)
+
     full_text = ""
     max_ts = last_ts
 
@@ -142,7 +144,6 @@ def main():
     try:
         chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
 
-        # Вставляем в начало → переворачиваем порядок чанков
         for i, chunk in enumerate(reversed(chunks)):
             docs_service.documents().batchUpdate(documentId=DOC_ID, body={
                 "requests": [{
