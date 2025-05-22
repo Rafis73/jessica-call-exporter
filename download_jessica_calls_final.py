@@ -135,7 +135,6 @@ def main():
         return
 
     try:
-        # Получаем последний валидный индекс вставки
         doc = docs_service.documents().get(documentId=DOC_ID).execute()
         content = doc.get("body", {}).get("content", [])
         end_index = 1
@@ -143,21 +142,35 @@ def main():
             if "endIndex" in el:
                 end_index = el["endIndex"]
                 break
-        print(f"Вставка будет выполнена в позицию: {end_index}")
 
-        requests_body = [{
-            "insertText": {
-                "location": {"index": end_index - 1},
-                "text": full_text
-            }
-        }]
+        print(f"Всего символов в тексте: {len(full_text)}")
+        print(f"Вставка будет начинаться с позиции: {end_index}")
 
-        docs_service.documents().batchUpdate(documentId=DOC_ID, body={"requests": requests_body}).execute()
-        print(f"✅ Добавлено {len(new_calls)} звонков в Google Doc (ID={DOC_ID}).")
+        # Разбиваем текст на чанки
+        chunk_size = 2000
+        chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
+
+        requests_body = []
+        insert_index = end_index - 1  # Вставлять перед последним символом
+        for chunk in chunks:
+            requests_body.append({
+                "insertText": {
+                    "location": {"index": insert_index},
+                    "text": chunk
+                }
+            })
+            insert_index += len(chunk)
+
+        docs_service.documents().batchUpdate(
+            documentId=DOC_ID,
+            body={"requests": requests_body}
+        ).execute()
+
+        print(f"✅ Успешно добавлено {len(new_calls)} звонков ({len(full_text)} символов).")
         save_last_run(max_ts)
 
     except Exception as e:
-        print(f"❌ Ошибка при добавлении в документ: {e}")
+        print(f"❌ Ошибка при вставке: {e}")
 
 if __name__ == "__main__":
     main()
