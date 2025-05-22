@@ -22,7 +22,7 @@ def save_last_run(ts):
         f.write(ts)
 
 def fetch_calls():
-    url = f"https://api.elevenlabs.io/v1/convai/conversations?page_size=100&agent_id={AGENT_ID}"
+    url = "https://api.elevenlabs.io/v1/calls"
     headers = {"xi-api-key": API_KEY}
     calls = []
     while url:
