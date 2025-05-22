@@ -1,153 +1,84 @@
-
-#!/usr/bin/env python3
-
-import os
-import time
+from datetime import datetime
 import requests
+import json
+import os
 import pickle
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# ----------------- НАСТРОЙКИ -----------------
-API_KEY      = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
-PAGE_SIZE    = 100
+# ==== КОНФИГ ====
+API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
+AGENT_ID = "Ett5Z2WymqkwilmMtCCYJ"
+DOC_ID = "1iFo9n49wVAhYfdHQUVBzypcm-SzuyY0DCqqpt6Ko4fM4"
 LAST_RUN_FILE = "last_run.txt"
-CREDENTIALS  = "credentials.json"
-SCOPES       = [
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive.file",
-]
-TZ_OFFSET_HOURS = 4
-AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
-DOC_ID = "1iFo9n49wVAhYfdHQVBzypcm-SzuyY0DCqqpt6Ko4fM4"
+TOKEN_PICKLE = "token.pickle"
+# ================
 
-# ----------------- Google OAuth -----------------
-def get_credentials():
-    creds = None
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as f:
-            creds = pickle.load(f)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS, SCOPES
-            )
-            creds = flow.run_local_server(
-                port=0,
-                access_type="offline",
-                include_granted_scopes=True,
-            )
-        with open("token.pickle", "wb") as f:
-            pickle.dump(creds, f)
-    return creds
-
-creds = get_credentials()
-docs_service = build("docs", "v1", credentials=creds)
-
-# ----------------- ConvAI API -----------------
-session = requests.Session()
-session.headers.update({
-    "xi-api-key": API_KEY,
-    "Accept":     "application/json"
-})
-
-def fetch_all_calls():
-    url = "https://api.elevenlabs.io/v1/convai/conversations"
-    params = {"page_size": PAGE_SIZE}
-    all_calls = []
-    while True:
-        r = session.get(url, params=params)
-        r.raise_for_status()
-        data = r.json()
-        calls = data.get("conversations", [])
-        for call in calls:
-            if call.get("agent_id", "") == AGENT_ID_FILTER:
-                all_calls.append(call)
-        if not data.get("has_more", False):
-            break
-        params["cursor"] = data.get("next_cursor")
-    return all_calls
-
-def fetch_call_detail(conversation_id):
-    r = session.get(f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}")
-    r.raise_for_status()
-    return r.json()
-
-# ----------------- Вспомогательные функции -----------------
 def load_last_run():
-    return int(open(LAST_RUN_FILE).read().strip()) if os.path.exists(LAST_RUN_FILE) else 0
+    return open(LAST_RUN_FILE).read().strip() if os.path.exists(LAST_RUN_FILE) else "1970-01-01T00:00:00Z"
 
-def save_last_run(timestamp):
+def save_last_run(ts):
     with open(LAST_RUN_FILE, "w") as f:
-        f.write(str(int(timestamp)))
+        f.write(ts)
 
-# ----------------- Форматирование звонка -----------------
-def format_call(detail, fallback_ts):
-    st = detail.get("metadata", {}).get("start_time_unix_secs", fallback_ts)
-    adjusted_ts = st + (TZ_OFFSET_HOURS * 3600)
-    ts_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(adjusted_ts))
-    summary = detail.get("analysis", {}).get("transcript_summary", "").strip()
-    transcript = detail.get("transcript", [])
-    lines = []
-    prev_role = None
-    for msg in transcript:
-        role = (msg.get("role") or "").upper()
-        text = (msg.get("message") or "").strip()
-        if not text:
-            continue
-        tsec = msg.get("time_in_call_secs", 0.0)
-        line = f"[{tsec:06.2f}s] {role}: {text}"
-        if prev_role and prev_role != role:
-            lines.append("")
-        if prev_role == role:
-            lines[-1] += "\n" + line
-        else:
-            lines.append(line)
-        prev_role = role
-    header = f"=== Call at {ts_str} ===\n"
-    if summary:
-        header += f"Summary:\n{summary}\n"
-    return header + "\n" + "\n".join(lines) + "\n\n" + "―" * 40 + "\n\n"
+def fetch_calls():
+    url = f"https://api.elevenlabs.io/v1/convai/conversations?page_size=100&agent_id={AGENT_ID}"
+    headers = {"xi-api-key": API_KEY}
+    calls = []
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        calls.extend(data.get("conversations", []))
+        url = data.get("next")
+    return calls
 
-# ----------------- Основной процесс -----------------
+def get_docs_service():
+    with open(TOKEN_PICKLE, "rb") as token:
+        creds = pickle.load(token)
+    return build("docs", "v1", credentials=creds)
+
+def format_call_block(call):
+    timestamp = call["createdAt"]
+    summary = call.get("summary", "No summary.")
+    messages = call.get("messages", [])
+    block = [f"=== Call at {timestamp} ===", f"Summary:\n{summary}\n"]
+    for msg in messages:
+        t = msg.get("timestamp", "[time]")
+        role = msg.get("role", "").upper()
+        text = msg.get("message", "").strip()
+        block.append(f"[{t}] {role}: {text}")
+    block.append("______________________________________________________________\n")
+    return "\n".join(block)
+
 def main():
-    calls = fetch_all_calls()
-    print(f"Всего звонков от агента ID={AGENT_ID_FILTER}: {len(calls)}")
+    last_run = load_last_run()
+    print(f"⏱️ Last run: {last_run}")
+    all_calls = fetch_calls()
 
-    last_ts = load_last_run()
-    new_calls = [c for c in calls if c.get("start_time_unix_secs", 0) > last_ts]
-    print(f"Новых звонков: {len(new_calls)}")
+    new_calls = [c for c in all_calls if c["createdAt"] > last_run]
+    print(f"🔔 New calls: {len(new_calls)}")
+
     if not new_calls:
-        print("Нет новых звонков для добавления.")
+        print("Нет новых звонков.")
         return
 
-    new_calls.sort(key=lambda x: x["start_time_unix_secs"], reverse=True)
-    full_text = ""
-    max_ts = last_ts
-    for call in new_calls:
-        cid = call["conversation_id"]
-        fallback = call.get("start_time_unix_secs", 0)
-        detail = fetch_call_detail(cid)
-        block = format_call(detail, fallback)
-        full_text += block
-        call_ts = detail.get("metadata", {}).get("start_time_unix_secs", fallback)
-        if call_ts > max_ts:
-            max_ts = call_ts
+    new_calls.sort(key=lambda x: x["createdAt"], reverse=True)
+    content = "\n".join(format_call_block(c) for c in new_calls)
 
+    service = get_docs_service()
     requests_body = [{
         "insertText": {
             "location": {"index": 1},
-            "text": full_text
+            "text": content + "\n"
         }
     }]
+    service.documents().batchUpdate(documentId=DOC_ID, body={"requests": requests_body}).execute()
+    print("✅ Calls inserted.")
 
-    docs_service.documents().batchUpdate(documentId=DOC_ID, body={"requests": requests_body}).execute()
-
-    save_last_run(max_ts)
-    print(f"✅ Добавлено {len(new_calls)} звонков в Google Doc (ID={DOC_ID}).")
+    latest_ts = max(c["createdAt"] for c in new_calls)
+    save_last_run(latest_ts)
+    print(f"📝 last_run updated: {latest_ts}")
 
 if __name__ == "__main__":
     main()
