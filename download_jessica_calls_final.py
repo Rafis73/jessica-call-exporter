@@ -82,7 +82,10 @@ def format_call(detail, fallback_ts):
     st = detail.get("metadata", {}).get("start_time_unix_secs", fallback_ts)
     adjusted_ts = st + (TZ_OFFSET_HOURS * 3600)
     ts_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(adjusted_ts))
-    summary = detail.get("analysis", {}).get("transcript_summary", "").strip()
+
+    analysis = detail.get("analysis") or {}
+    summary = (analysis.get("transcript_summary") or "").strip()
+
     transcript = detail.get("transcript", [])
     lines = []
     prev_role = None
@@ -100,6 +103,7 @@ def format_call(detail, fallback_ts):
         else:
             lines.append(line)
         prev_role = role
+
     header = f"=== Call at {ts_str} ===\n"
     if summary:
         header += f"Summary:\n{summary}\n"
@@ -151,7 +155,7 @@ def main():
         chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
 
         requests_body = []
-        insert_index = end_index - 1  # Вставлять перед последним символом
+        insert_index = end_index - 1
         for chunk in chunks:
             requests_body.append({
                 "insertText": {
