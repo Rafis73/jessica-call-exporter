@@ -63,9 +63,16 @@ def fetch_all_calls():
     return all_calls
 
 def fetch_call_detail(cid):
-    r = session.get(f"https://api.elevenlabs.io/v1/convai/conversations/{cid}")
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = session.get(f"https://api.elevenlabs.io/v1/convai/conversations/{cid}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.Timeout:
+        print(f"⏱ Таймаут при запросе звонка {cid} — пропускаем")
+        return {}
+    except Exception as e:
+        print(f"❌ Ошибка при получении звонка {cid}: {e}")
+        return {}
 
 # ---------------- УТИЛИТЫ ---------------- #
 def load_last_run():
@@ -141,17 +148,15 @@ def main():
     for call in new_calls:
         cid = call["conversation_id"]
         fallback_ts = call.get("start_time_unix_secs", 0)
-        try:
-            detail = fetch_call_detail(cid)
-            block = format_call(detail, fallback_ts)
-            full_text += block
-            ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback_ts
-            if ts > max_ts:
-                max_ts = ts
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"❌ Ошибка при получении звонка {cid}: {e}")
+        detail = fetch_call_detail(cid)
+        time.sleep(0.5)
+        if not detail:
             continue
+        block = format_call(detail, fallback_ts)
+        full_text += block
+        ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback_ts
+        if ts > max_ts:
+            max_ts = ts
 
     if not full_text.strip():
         print("⚠️ Пустой текст — ничего не вставляем")
