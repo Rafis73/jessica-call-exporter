@@ -130,6 +130,7 @@ def main():
         cid = call["conversation_id"]
         fallback = call.get("start_time_unix_secs", 0)
         detail = fetch_call_detail(cid)
+        time.sleep(1.0)  # пауза между запросами к ElevenLabs
         block = format_call(detail, fallback)
         full_text += block
         call_ts = detail.get("metadata", {}).get("start_time_unix_secs") or fallback
@@ -172,7 +173,7 @@ def main():
 
             insert_index += len(chunk)
             print(f"✅ Вставлен чанк {idx + 1}/{len(chunks)} ({len(chunk)} символов)")
-            time.sleep(1.1)
+            time.sleep(1.1)  # пауза между вставками в Google Docs
 
         print(f"🎯 Все чанки вставлены. Сохраняем max_ts: {max_ts}")
         save_last_run(max_ts)
