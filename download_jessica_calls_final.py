@@ -9,9 +9,9 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-# --- НАСТРОЙКИ --- #
+# === НАСТРОЙКИ === #
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"  # ← подставь свой ключ
+API_KEY = "sk_91b455debc341646af393b6582573e06c70458ce8c0e51d4"
 DOC_ID = "1iFo9n49wVAhYfdHQVBzypcm-SzuyY0DCqqpt6Ko4fM4"
 PAGE_SIZE = 100
 CHUNK_SIZE = 100000
@@ -21,7 +21,7 @@ SCOPES = ["https://www.googleapis.com/auth/documents", "https://www.googleapis.c
 AGENT_ID_FILTER = "Ett5Z2WyqmkwilmtCCYJ"
 TZ_OFFSET_HOURS = 4
 
-# --- AUTH --- #
+# === AUTH === #
 def get_credentials():
     creds = None
     token_path = os.path.join(BASE_DIR, "token.pickle")
@@ -44,13 +44,14 @@ docs_service = build("docs", "v1", credentials=creds)
 session = requests.Session()
 session.headers.update({"xi-api-key": API_KEY, "Accept": "application/json"})
 
-# --- ЗВОНКИ --- #
+# === ЗВОНКИ === #
 def fetch_all_calls():
     url = "https://api.elevenlabs.io/v1/convai/conversations"
     params = {"page_size": PAGE_SIZE}
     all_calls = []
     while True:
-        r = session.get(url, params=params)
+        print(f"🌐 Получаем звонки: cursor={params.get('cursor')}")
+        r = session.get(url, params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
         for call in data.get("conversations", []):
@@ -71,7 +72,7 @@ def fetch_call_detail(cid):
         print(f"❌ Ошибка при звонке {cid}: {e}")
     return {}
 
-# --- УТИЛИТЫ --- #
+# === УТИЛИТЫ === #
 def load_last_run():
     try:
         with open(LAST_RUN_FILE) as f:
@@ -109,7 +110,7 @@ def format_call(detail, fallback_ts):
     if summary: header += f"Summary:\n{summary}\n"
     return header + "\n" + "\n".join(lines) + "\n\n" + "―" * 40 + "\n\n"
 
-# --- ОСНОВНОЙ ПРОЦЕСС --- #
+# === MAIN === #
 def main():
     print("🚀 Экспорт новых звонков")
     calls = fetch_all_calls()
@@ -156,7 +157,7 @@ def main():
 
         save_last_run(max_ts)
     except Exception as e:
-        print(f"❌ Ошибка вставки: {e}")
+        print(f"❌ Ошибка вставки в документ: {e}")
 
 if __name__ == "__main__":
     main()
